@@ -7,8 +7,8 @@ using namespace std;
 #define PARAMETERS_H_
 
 // 現在使用する問題の切り替え（ここを変えるだけ！）
-#define CURRENT_LINE_HINTS Hints_Line_SCOPION
-#define CURRENT_COLUMN_HINTS Hints_Col_SCOPION
+#define CURRENT_LINE_HINTS Hints_Line_SPIDER
+#define CURRENT_COLUMN_HINTS Hints_Col_SPIDER
 
 
 extern const double PROBABILITY_LOWER_LIMIT_LINE; //確率的実行可能行の下限値
