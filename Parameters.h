@@ -7,12 +7,11 @@ using namespace std;
 #define PARAMETERS_H_
 
 // 現在使用する問題の切り替え（ここを変えるだけ！）
-#define CURRENT_LINE_HINTS Hints_Line_SPIDER
-#define CURRENT_COLUMN_HINTS Hints_Col_SPIDER
-
+#define CURRENT_LINE_HINTS Hints_Line_SPLAY
+#define CURRENT_COLUMN_HINTS Hints_Col_SPLAY
 
 extern const double PROBABILITY_LOWER_LIMIT_LINE; //確率的実行可能行の下限値
-
+extern int OPT_TIME; //最適解到達回数
 extern const size_t NUM_LINE; //行数
 extern const size_t NUM_COL; //列数
 extern const int SIMULATION_SIZE; //シミュレーション回数
@@ -21,14 +20,14 @@ extern const int PARENTS_SIZE; //GAの親集団サイズ
 extern const int OFFSPRING_SIZE; //GAの子集団サイズ
 
 extern const int TOURNAMENT_SIZE; //GAの選択のトーナメントサイズ
-
+extern const int TOURNAMENT_RATE; //交叉のトーナメント選択の選択割合
 
 //実験時の分岐のためのフラグ設定（数値に応じてやりたい動作ができる）
-extern const int FIXCELL_FLAG; //確定マスの設定
-extern const int CROSSOVER_FLAG; //交叉方法の設定
-extern const int PARENTS_FLAG; //交叉時の親選択方法
-extern const int MUTATION_FLAG; //突然変異方法の設定
-extern const int SELECTION_FLAG; //次世代集団生成方法の設定
+extern int FIXCELL_FLAG; //確定マスの設定
+extern int CROSSOVER_FLAG; //交叉方法の設定
+extern int PARENTS_FLAG; //交叉時の親選択方法
+extern int MUTATION_FLAG; //突然変異方法の設定
+extern int SELECTION_FLAG; //次世代集団生成方法の設定
 
 //乱数の再現性の担保のためのシード値
 constexpr int BASE_SEED = 12345;

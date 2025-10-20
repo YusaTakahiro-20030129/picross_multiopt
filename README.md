@@ -2,7 +2,7 @@
 
 This project is a solver for Picross (also known as Nonograms or Griddlers) puzzles, implemented in C++. It uses a multi-objective evolutionary algorithm (NSGA-II) to find solutions.
 
-このプロジェクトは、C++で実装されたピクロス（お絵かきロジック）のソルバーです。多目的進化的アルゴリズム（NSGA-II）を用いて解を探索します。
+このプロジェクトは、C++で実装されたピクロス（お絵かきロジック）のソルバーです。多目的進化的アルゴリズム（VEGA）を用いて解を探索します。
 
 ## Description
 

@@ -32,7 +32,7 @@ private:
 	vector <int> column_copy; //列の複製
 	
 	long NUM_CELL; //必要配置黒マス数
-
+	
 	struct INDIVIDUAL { //解の構造体
 		vector<vector<int> > BOARD; //ゲーム盤面
 		vector<long> EVALUATION_VALUE_LINE; //行の評価値
