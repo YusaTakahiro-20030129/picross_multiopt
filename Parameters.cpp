@@ -3,15 +3,22 @@
 const double PROBABILITY_LOWER_LIMIT_LINE = 1.0; //確定マスとする確率
 
 const int SIMULATION_SIZE = 20; //シミュレーション回数
-const int GENERATION_SIZE = 400; //GAの世代数
-const int PARENTS_SIZE = 500; //GAの親集団サイズ
+const int GENERATION_SIZE = 500; //GAの世代数
+const int PARENTS_SIZE = 2000; //GAの親集団サイズ
 const int OFFSPRING_SIZE = PARENTS_SIZE * 3; //GAの子集団サイズ
+
+const double MUTATION_RATE = 0.1; //GAの突然変異確率（初期のGAにするならば1.0に設定）
 
 const int TOURNAMENT_SIZE = 2 * (PARENTS_SIZE + OFFSPRING_SIZE) / PARENTS_SIZE; //GAの選択のトーナメントサイズ
 
 int OPT_TIME = 0; //最適解到達回数
+int FINISH_GENERATION = 0; //終了世代数
 
-// 確定マスの設定
+//　初期集団の生成方法
+//0: ランダム生成, 1: 行の制約に従った特殊配置
+int INITIALIZATION_FLAG = 0;
+
+// 確定マスの設定1
 // 0:確定マスを設定しない , 1：確定マスを設定する
 int FIXCELL_FLAG = 1;
 
@@ -23,12 +30,13 @@ int CROSSOVER_FLAG = 1;
 // 0: ランダム選択, 1: 異サブ集団選択, 2:ランダムトーナメント選択 3: ルーレット選択
 int PARENTS_FLAG = 3;
 
-//交叉のトーナメント選択の選択割合
-const int TOURNAMENT_RATE  = 2; //2: 上位50%を選択, 4: 上位25%を選択, 5: 上位20%を選択
+//交叉のトーナメント選択の選択割合()
+//2: 上位50%を選択, 4: 上位25%を選択, 5: 上位20%を選択
+const int TOURNAMENT_RATE  = 2; 
 
 // 突然変異方法の設定
-// 0: 領域変異（完全ランダム）, 1: 領域変異（確定マス設定）, 2: 半数行変異・半数列変異(確定マス設定)
-int MUTATION_FLAG = 1;
+// 0: 領域変異（完全ランダム）, 1: 領域変異（確定マス設定）, 2: 半数行変異・半数列変異(確定マス設定), 3: 全体変異(確定マス設定),4: 全体変異(完全ランダム)
+int MUTATION_FLAG = 4;
 
 // 選択方法の設定
 // 0: エリート選択, 1: トーナメント選択

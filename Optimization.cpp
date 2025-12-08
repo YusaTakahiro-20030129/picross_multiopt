@@ -31,6 +31,10 @@ Optimization ::Optimization()
     GB.BOARD_FIX_CELL_TMP.resize(NUM_LINE);
     GB.BLACK_PROBABILITY_LINE.resize(NUM_LINE);
     GB.BLACK_PROBABILITY_COLUMN.resize(NUM_LINE);
+    GB.BLACKCELLNUM_LINE.resize(NUM_LINE);
+    GB.BLACKCELLNUM_COLUMN.resize(NUM_COL);
+    GB.BLACKCELLFIXNUM_LINE.resize(NUM_LINE);
+    GB.BLACKCELLFIXNUM_COLUMN.resize(NUM_COL);
 
     for (int i = 0; i < NUM_LINE; i++)
     {
@@ -83,7 +87,7 @@ void Optimization::Algorithm()
     }
     cout << "OK" << endl;
 
-    //最適解到達回数カウンター
+    // 最適解到達回数カウンター
     OPT_TIME = 0;
 
     for (int simu = 0; simu < SIMULATION_SIZE; simu++)
@@ -134,6 +138,7 @@ void Optimization::Algorithm()
             // }
 
             Plot_result(simu, gene, "pareto_");
+            BestScore_Result(simu, gene);
             if (BT_IDV[simu][gene].EVALUATION_VALUE_F_1 == 0 && BT_IDV[simu][gene].EVALUATION_VALUE_F_2 == 0)
             { // 最適解に到達したら
                 for (int k = gene + 1; k < GENERATION_SIZE; k++)
@@ -144,11 +149,14 @@ void Optimization::Algorithm()
                     BT_IDV[simu][k].EVALUATION_VALUE_LINE = BT_IDV[simu][gene].EVALUATION_VALUE_LINE;
                     BT_IDV[simu][k].BOARD = BT_IDV[simu][gene].BOARD;
                 }
-                OPT_TIME ++;
+                OPT_TIME++;
+
                 cout << "--------Optimization goal!!!!!!--------" << endl;
                 cout << "---------------opt_time : " << OPT_TIME << "----------------" << endl;
+                FINISH_GENERATION = gene; // 最適解到達世代を保存
                 break;
             }
+            
         }
         IDV.clear();
     }
@@ -368,12 +376,14 @@ void Optimization::GameBase()
                     GB.BOARD_FIX_CELL[i][j] = 1;
                     GB.BOARD_FIX_CELL_TMP[i][j] = 1;
                     black_cell_fixnum++;
+                    GB.BLACKCELLNUM_LINE[i]++;
                 }
                 else if (GB.BLACK_PROBABILITY_COLUMN[i][j] == 1)
                 {
                     GB.BOARD_FIX_CELL[i][j] = 1;
                     GB.BOARD_FIX_CELL_TMP[i][j] = 1;
                     black_cell_fixnum++;
+                    GB.BLACKCELLNUM_COLUMN[i]++;
                 }
 
                 // 白の確定
@@ -418,8 +428,8 @@ void Optimization::GameBase()
         total_feasible_col += copy_col;
     }
 
-    cout << "合計実行可能行数 : " << total_feasible_line << endl;
-    cout << "合計実行可能列数 : " << total_feasible_col << endl;
+    cout << "total feasible line num : " << total_feasible_line << endl;
+    cout << "total feasible column num : " << total_feasible_col << endl;
     cout << "picross base OK" << endl;
 
     // 黒マス配置数の算出
@@ -431,6 +441,7 @@ void Optimization::GameBase()
         for (int j = 0; j < GB.HINTS_LINE[i].size(); j++)
         {
             total_cell_line += GB.HINTS_LINE[i][j];
+            GB.BLACKCELLNUM_LINE[i] += GB.HINTS_LINE[i][j];
         }
     }
 
@@ -439,6 +450,7 @@ void Optimization::GameBase()
         for (int j = 0; j < GB.HINTS_COLUMN[i].size(); j++)
         {
             total_cell_col += GB.HINTS_COLUMN[i][j];
+            GB.BLACKCELLNUM_COLUMN[i] += GB.HINTS_COLUMN[i][j];
         }
     }
     if (total_cell_col == total_cell_line)
@@ -447,6 +459,8 @@ void Optimization::GameBase()
         cout << "black num" << total_cell_col;
     }
     NUM_CELL = total_cell_line - black_cell_fixnum;
+
+    // 行ごとの黒マス数の算出
 }
 
 // 初期化（初期盤面の作成）
@@ -474,29 +488,64 @@ void Optimization::Initialization(int loop)
     }
 
     // 初期集団の形成
-    int prepare_debug = 0;
     for (int i = 0; i < PARENTS_SIZE; ++i)
     {
         int seed = generate_seed(loop, 0, i);
         mt19937 rng(seed);
-
         uniform_int_distribution<int> dist_line(0, NUM_LINE - 1);
         uniform_int_distribution<int> dist_col(0, NUM_COL - 1);
 
-        int black_cell_counter_copy = NUM_CELL;
+        // 確定マスをコピー
+        IDV[i].BOARD = GB.BOARD_FIX_CELL_TMP;
 
-        while (black_cell_counter_copy > 0)
+        if (INITIALIZATION_FLAG == 0)
         {
-            int ram_line = dist_line(rng);
-            int ram_col = dist_col(rng);
+            int black_cell_counter_copy = NUM_CELL;
 
-            if (IDV[i].BOARD[ram_line][ram_col] == 0 && GB.BOARD_FIX_CELL[ram_line][ram_col] == 0)
+            while (black_cell_counter_copy > 0)
             {
-                IDV[i].BOARD[ram_line][ram_col] = 1;
-                black_cell_counter_copy--;
+                int line = dist_line(rng); // もしランダムで行も選ぶ場合だけ
+                int column = dist_col(rng);
+
+                if (IDV[i].BOARD[line][column] == 0 && GB.BOARD_FIX_CELL[line][column] == 0)
+                {
+                    IDV[i].BOARD[line][column] = 1;
+                    black_cell_counter_copy--;
+                }
             }
         }
-        EvaluationFunction(i); // 評価関数の算出
+        else if (INITIALIZATION_FLAG == 1)
+        {
+            // 行ごとの制約付き初期化
+            for (int line = 0; line < NUM_LINE; ++line)
+            {
+                int total_needed = 0;
+                for (int h : GB.HINTS_LINE[line])
+                    total_needed += h;
+
+                int fixed_black = GB.BLACKCELLFIXNUM_LINE[line];
+                int need_to_place = total_needed - fixed_black;
+                if (need_to_place <= 0)
+                    continue;
+
+                vector<int> candidate_columns;
+                for (int column = 0; column < NUM_COL; ++column)
+                {
+                    if (GB.BOARD_FIX_CELL[line][column] == 0)
+                        candidate_columns.push_back(column);
+                }
+
+                if (candidate_columns.size() < need_to_place)
+                    continue;
+
+                shuffle(candidate_columns.begin(), candidate_columns.end(), rng);
+
+                for (int k = 0; k < need_to_place; ++k)
+                    IDV[i].BOARD[line][candidate_columns[k]] = 1;
+            }
+        }
+
+        EvaluationFunction_LineCol(i); // 評価関数は必ずここで
     }
 }
 
@@ -687,8 +736,8 @@ void Optimization::Crossover(int loop)
         Adjust_blackcell(PARENTS_SIZE + offspring_no, r_1, r_2, c_1, c_2, loop);
         Adjust_blackcell(PARENTS_SIZE + offspring_no + 1, r_1, r_2, c_1, c_2, loop);
 
-        EvaluationFunction(PARENTS_SIZE + offspring_no);
-        EvaluationFunction(PARENTS_SIZE + offspring_no + 1);
+        EvaluationFunction_LineCol(PARENTS_SIZE + offspring_no);
+        EvaluationFunction_LineCol(PARENTS_SIZE + offspring_no + 1);
 
         offspring_no += 2;
     }
@@ -697,9 +746,18 @@ void Optimization::Crossover(int loop)
 void Optimization::Mutation(int gene, int loop)
 {
     mt19937 rng(BASE_SEED + loop * LOOP_OFFSET + OPERATION_OFFSET * 2 + gene * INDIVIDUAL_OFFSET);
+    uniform_real_distribution<double> dist_prob(0.0, 1.0); // 変異率の設定
 
     for (int i = 0; i < PARENTS_SIZE; i++)
     {
+        if (dist_prob(rng) > MUTATION_RATE)
+        {
+            // 変異しない場合は親をそのままコピー
+            IDV[PARENTS_SIZE * 3 + i].BOARD = IDV[i].BOARD;
+            EvaluationFunction_LineCol(PARENTS_SIZE * 3 + i);
+            continue;
+        }
+
         // 盤面の複製
         IDV[PARENTS_SIZE * 3 + i].BOARD = IDV[i].BOARD;
 
@@ -883,10 +941,86 @@ void Optimization::Mutation(int gene, int loop)
         //     IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 1;
         // }
 
+        if (MUTATION_FLAG == 3)
+        {
+            // 1. 行または列を選択（50%ずつ）
+            uniform_int_distribution<int> line_or_col(0, 1);
+            bool mutate_line = line_or_col(rng);
+
+            int target_index = -1;
+
+            // 2. 違反の大きい行または列を選択
+            if (mutate_line)
+            {
+                vector<pair<long, int>> line_eval;
+                for (int j = 0; j < NUM_LINE; j++)
+                    line_eval.push_back({IDV[i].EVALUATION_VALUE_LINE[j], j});
+                sort(line_eval.rbegin(), line_eval.rend());
+                target_index = line_eval.front().second;
+            }
+            else
+            {
+                vector<pair<long, int>> col_eval;
+                for (int j = 0; j < NUM_COL; j++)
+                    col_eval.push_back({IDV[i].EVALUATION_VALUE_COLUMN[j], j});
+                sort(col_eval.rbegin(), col_eval.rend());
+                target_index = col_eval.front().second;
+            }
+
+            // 3. 実行可能配列からランダムに1つ選択し置き換え
+            if (mutate_line)
+            {
+                uniform_int_distribution<int> feasible_dist(0, GB.FEASIBLE_LINE[target_index].size() - 1);
+                int pattern_idx = feasible_dist(rng);
+
+                // 行をそのまま置き換え
+                IDV[PARENTS_SIZE * 3 + i].BOARD[target_index] = GB.FEASIBLE_LINE[target_index][pattern_idx];
+            }
+            else
+            {
+                uniform_int_distribution<int> feasible_dist(0, GB.FEASIBLE_COLUMN[target_index].size() - 1);
+                int pattern_idx = feasible_dist(rng);
+
+                // 列の置き換え（固定マスは変更しない）
+                for (int r = 0; r < NUM_LINE; r++)
+                {
+                    if (GB.BOARD_FIX_CELL[r][target_index] != 1)
+                        IDV[PARENTS_SIZE * 3 + i].BOARD[r][target_index] = GB.FEASIBLE_COLUMN[target_index][pattern_idx][r];
+                }
+            }
+        }
+
+        if (MUTATION_FLAG == 4) // 行のみの置換
+        {
+            // 違反が大きい行を選択
+            int target_index = -1;
+            vector<pair<long, int>> line_eval;
+            for (int j = 0; j < NUM_LINE; j++)
+                line_eval.push_back({IDV[i].EVALUATION_VALUE_LINE[j], j});
+            sort(line_eval.rbegin(), line_eval.rend());
+            target_index = line_eval.front().second;
+
+            // 実行可能パターンをランダムに1つ選ぶ
+            uniform_int_distribution<int> feasible_dist(0, GB.FEASIBLE_LINE[target_index].size() - 1);
+            int pattern_idx = feasible_dist(rng);
+
+            // 固定マスを壊さずに再配置
+            for (int col = 0; col < NUM_COL; col++)
+            {
+                if (GB.BOARD_FIX_CELL[target_index][col] != 1)
+                {
+                    IDV[PARENTS_SIZE * 3 + i].BOARD[target_index][col] =
+                        GB.FEASIBLE_LINE[target_index][pattern_idx][col];
+                }
+            }
+        }
+
         // 評価関数の再計算
-        EvaluationFunction(PARENTS_SIZE * 3 + i);
+        EvaluationFunction_LineCol(PARENTS_SIZE * 3 + i);
     }
 }
+ 
+//局所探索アルゴリズム：進化が止まった時の最良個体に対して実施
 
 void Optimization::Adjust_blackcell(int i, int r1, int r2, int c1, int c2, int loop)
 {
@@ -1254,7 +1388,7 @@ int Optimization::selection_roulette()
             return i;
         }
     }
-    
+
     return 0;
 }
 
@@ -1263,7 +1397,7 @@ int Optimization::selection_nsga2()
     return 0;
 }
 
-void Optimization::EvaluationFunction(int i)
+void Optimization::EvaluationFunction_LineCol(int i)
 {
 
     // 変数の初期化
@@ -1334,8 +1468,29 @@ void Optimization::EvaluationFunction(int i)
     IDV[i].EVALUATION_VALUE_F_2 = score_f_2;
 }
 
-#include <filesystem>  // ← 追加
+void Optimization::EvaluationFunction_Objective(int i)
+{
+    // 変数の初期化
+    IDV[i].EVALUATION_VALUE_F_1 = 0;
+    IDV[i].EVALUATION_VALUE_F_2 = 0;
 
+    double score_f_1 = 0;
+    double score_f_2 = 0;
+
+    // 目的関数 f1 の計算
+    for (int j = 0; j < NUM_LINE; j++)
+    {
+        score_f_1 += IDV[i].EVALUATION_VALUE_LINE[j];
+    }
+    IDV[i].EVALUATION_VALUE_F_1 = score_f_1;
+
+    // 目的関数 f2 の計算
+    for (int j = 0; j < NUM_COL; j++)
+    {
+        score_f_2 += IDV[i].EVALUATION_VALUE_COLUMN[j];
+    }
+    IDV[i].EVALUATION_VALUE_F_2 = score_f_2;
+}
 void Optimization::Plot_result(int i, int simu, string filename)
 {
     string dir = "results/score/pareto(" +
@@ -1343,13 +1498,13 @@ void Optimization::Plot_result(int i, int simu, string filename)
                  to_string(CROSSOVER_FLAG) + "_" +
                  to_string(PARENTS_FLAG) + "_" +
                  to_string(MUTATION_FLAG) + "_" +
-                 to_string(SELECTION_FLAG) + ")/simu_" +
-                 to_string(i) + "/";
+                 to_string(SELECTION_FLAG) + ") + " +
+                 to_string(MUTATION_RATE) + "/" +
+                 "simu_" + to_string(i) + "/";
 
     filesystem::create_directories(dir);
 
-
-    string name_latest = dir + filename + to_string(i) + "_400.csv";
+    string name_latest = dir + filename + to_string(i) + "_"+ to_string(GENERATION_SIZE) + ".csv";
     ofstream file_latest(name_latest);
 
     if (!(simu == 1 or simu % 50 == 0))
@@ -1370,10 +1525,51 @@ void Optimization::Plot_result(int i, int simu, string filename)
     {
         file_write << IDV[i].EVALUATION_VALUE_F_1 << "," << IDV[i].EVALUATION_VALUE_F_2 << endl;
     }
+}
 
-    file_latest << "F1,F2" << endl;
-    for (int i = 0; i < PARENTS_SIZE; i++)
-    {
-        file_latest << IDV[i].EVALUATION_VALUE_F_1 << "," << IDV[i].EVALUATION_VALUE_F_2 << endl;
+void Optimization::BestScore_Result(int simu, int gene)
+{
+    string dir_simu ="results/score/pareto(" +
+                 to_string(FIXCELL_FLAG) + "_" +
+                 to_string(CROSSOVER_FLAG) + "_" +
+                 to_string(PARENTS_FLAG) + "_" +
+                 to_string(MUTATION_FLAG) + "_" +
+                 to_string(SELECTION_FLAG) + ") + " +
+                 to_string(MUTATION_RATE) + "/" +
+                 "simu_" + to_string(simu) + "/";
+
+    filesystem::create_directories(dir_simu);
+
+    string dir_memo = "results/score/pareto(" +
+                 to_string(FIXCELL_FLAG) + "_" +
+                 to_string(CROSSOVER_FLAG) + "_" +
+                 to_string(PARENTS_FLAG) + "_" +
+                 to_string(MUTATION_FLAG) + "_" +
+                 to_string(SELECTION_FLAG) + ") + " +
+                 to_string(MUTATION_RATE) + "/" ;
+
+    filesystem::create_directories(dir_memo);
+
+    string best_name = dir_simu + "best_score.csv";
+    ofstream file_writebest(best_name, ios::app);
+
+    file_writebest << gene << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_1 << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_2 << endl;
+
+    if (gene == GENERATION_SIZE - 1 ||  (BT_IDV[simu][gene].EVALUATION_VALUE_F_1 == 0 && BT_IDV[simu][gene].EVALUATION_VALUE_F_2 == 0)) {
+        string summary_file = dir_memo + "simu.csv" ;
+        ofstream file_write_summary(summary_file, ios::app);
+        file_write_summary << gene << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_1 << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_2 << endl;
+
+        string board_name = dir_simu + "best_board"+ ".csv";
+        ofstream board_file(board_name);
+
+        for (int i = 0; i < NUM_LINE; i++)
+        {
+            for (int j = 0; j < NUM_COL; j++)
+            {
+                board_file << BT_IDV[simu][gene].BOARD[i][j] << ",";
+            }
+            board_file << endl;
+        }
     }
 }

@@ -71,7 +71,7 @@ for h in range(check_start_num, check_simu_num):
         plt.xlim([0, max(df["F1"]) + 10])
         plt.ylim([0, max(df["F2"]) + 10])
         plt.legend()
-        plt.grid(True)
+        plt.grid(True)     
         plt.savefig(filename_fig)
             
         plt.close()

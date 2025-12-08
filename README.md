@@ -19,7 +19,7 @@ The puzzles to be solved are defined in `Question.h`.
 
 You can compile the C++ code using g++. Since all necessary `.cpp` files are included by `Fix.cpp`, the command is straightforward.
 
-```bash
+```bash　
 g++ Fix.cpp -o Fix -std=c++11
 ```
 
