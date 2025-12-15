@@ -90,6 +90,9 @@ void Optimization::Algorithm()
     // 最適解到達回数カウンター
     OPT_TIME = 0;
 
+    // --- MEMETIC_FLAG==3 support variables ---
+    static int memetic_not_improved = 0;
+    static double prev_best_eval = numeric_limits<double>::max();
     for (int simu = 0; simu < SIMULATION_SIZE; simu++)
     { // GAによる最適化
         for (int gene = 0; gene < GENERATION_SIZE; gene++)
@@ -129,6 +132,187 @@ void Optimization::Algorithm()
             BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
             BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
 
+            if (MEMETIC_FLAG == 1)
+            {
+                if (gene > 0 && gene % 5 == 0)
+                {
+                    LocalSearch(BestIndividualNo);
+                    BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[BestIndividualNo].EVALUATION_VALUE_F_1;
+                    BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
+                    BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
+                    BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[BestIndividualNo].EVALUATION_VALUE_COLUMN;
+                    BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
+                }
+            }
+            // -------- MEMETIC_FLAG == 2: probabilistic local search --------
+            if (MEMETIC_FLAG == 2)
+            {
+                if (gene > 0)
+                {
+                    mt19937 rng(BASE_SEED + simu * 17 + gene * 31);
+                    uniform_real_distribution<double> dist_prob(0.0, 1.0);
+                    if (dist_prob(rng) < MEMETIC_RATE)
+                    {
+                        LocalSearch(BestIndividualNo);
+                        BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[BestIndividualNo].EVALUATION_VALUE_F_1;
+                        BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
+                        BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
+                        BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[BestIndividualNo].EVALUATION_VALUE_COLUMN;
+                        BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
+                    }
+                }
+            }
+            // -------- MEMETIC_FLAG == 3: non-improvement-triggered local search --------
+            if (MEMETIC_FLAG == 3)
+            {
+                double current_best_eval = IDV[BestIndividualNo].EVALUATION_VALUE_F_1 * IDV[BestIndividualNo].EVALUATION_VALUE_F_1 + IDV[BestIndividualNo].EVALUATION_VALUE_F_2 * IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
+
+                if (current_best_eval < prev_best_eval)
+                {
+                    memetic_not_improved = 0;
+                    prev_best_eval = current_best_eval;
+                }
+                else
+                {
+                    memetic_not_improved++;
+                }
+
+                if (memetic_not_improved >= MEMETIC_GENE)
+                {
+                    LocalSearch(BestIndividualNo);
+                    memetic_not_improved = 0;
+                    prev_best_eval = IDV[BestIndividualNo].EVALUATION_VALUE_F_1 * IDV[BestIndividualNo].EVALUATION_VALUE_F_1 + IDV[BestIndividualNo].EVALUATION_VALUE_F_2 * IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
+
+                    BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[BestIndividualNo].EVALUATION_VALUE_F_1;
+                    BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
+                    BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
+                    BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[BestIndividualNo].EVALUATION_VALUE_COLUMN;
+                    BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
+                }
+            }
+            // -------- MEMETIC_FLAG == 4: LocalSearch with black-count matching for both rows/columns --------
+            if (MEMETIC_FLAG == 4) {
+                if (gene > 0) {
+
+                    int idx_ls = BestIndividualNo;
+
+                    // ----- choose row or column: pick the worse violation globally -----
+                    bool target_is_row = true;
+                    long worst_row_val = -1;
+                    long worst_col_val = -1;
+                    int target_index = -1;
+
+                    for (int j = 0; j < NUM_LINE; j++) {
+                        if (IDV[idx_ls].EVALUATION_VALUE_LINE[j] > worst_row_val) {
+                            worst_row_val = IDV[idx_ls].EVALUATION_VALUE_LINE[j];
+                        }
+                    }
+                    for (int j = 0; j < NUM_COL; j++) {
+                        if (IDV[idx_ls].EVALUATION_VALUE_COLUMN[j] > worst_col_val) {
+                            worst_col_val = IDV[idx_ls].EVALUATION_VALUE_COLUMN[j];
+                        }
+                    }
+
+                    // decide target direction
+                    if (worst_col_val > worst_row_val) {
+                        target_is_row = false;
+                    }
+
+                    if (target_is_row) {
+                        // -------- ROW MODE --------
+                        // pick worst row
+                        vector<pair<long,int>> line_eval;
+                        for(int j = 0; j < NUM_LINE; j++){
+                            line_eval.push_back({IDV[idx_ls].EVALUATION_VALUE_LINE[j], j});
+                        }
+                        sort(line_eval.rbegin(), line_eval.rend());
+                        target_index = line_eval.front().second;
+
+                        // count black in current row
+                        int current_black = 0;
+                        for(int c = 0; c < NUM_COL; c++){
+                            if(IDV[idx_ls].BOARD[target_index][c] == 1) current_black++;
+                        }
+
+                        // find feasible rows with equal black count
+                        vector<int> cand;
+                        for(int p = 0; p < GB.FEASIBLE_LINE[target_index].size(); p++){
+                            int fblack = 0;
+                            for(int c = 0; c < NUM_COL; c++){
+                                if(GB.FEASIBLE_LINE[target_index][p][c] == 1) fblack++;
+                            }
+                            if(fblack == current_black) cand.push_back(p);
+                        }
+
+                        if(!cand.empty()){
+                            mt19937 rng(BASE_SEED + simu * 19 + gene * 23);
+                            uniform_int_distribution<int> dist(0, cand.size() - 1);
+                            int pattern_idx = cand[dist(rng)];
+
+                            for(int col = 0; col < NUM_COL; col++){
+                                if(GB.BOARD_FIX_CELL[target_index][col] != 1){
+                                    IDV[idx_ls].BOARD[target_index][col] =
+                                        GB.FEASIBLE_LINE[target_index][pattern_idx][col];
+                                }
+                            }
+                            EvaluationFunction_LineCol(idx_ls);
+
+                            BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[idx_ls].EVALUATION_VALUE_F_1;
+                            BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[idx_ls].EVALUATION_VALUE_F_2;
+                            BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[idx_ls].EVALUATION_VALUE_LINE;
+                            BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[idx_ls].EVALUATION_VALUE_COLUMN;
+                            BT_IDV[simu][gene].BOARD = IDV[idx_ls].BOARD;
+                        }
+                    }
+                    else {
+                        // -------- COLUMN MODE --------
+                        vector<pair<long,int>> col_eval;
+                        for(int j = 0; j < NUM_COL; j++){
+                            col_eval.push_back({IDV[idx_ls].EVALUATION_VALUE_COLUMN[j], j});
+                        }
+                        sort(col_eval.rbegin(), col_eval.rend());
+                        target_index = col_eval.front().second;
+
+                        // count black in current column
+                        int current_black = 0;
+                        for(int r = 0; r < NUM_LINE; r++){
+                            if(IDV[idx_ls].BOARD[r][target_index] == 1) current_black++;
+                        }
+
+                        // find feasible columns with equal black count
+                        vector<int> cand;
+                        for(int p = 0; p < GB.FEASIBLE_COLUMN[target_index].size(); p++){
+                            int fblack = 0;
+                            for(int r = 0; r < NUM_LINE; r++){
+                                if(GB.FEASIBLE_COLUMN[target_index][p][r] == 1) fblack++;
+                            }
+                            if(fblack == current_black) cand.push_back(p);
+                        }
+
+                        if(!cand.empty()){
+                            mt19937 rng(BASE_SEED + simu * 19 + gene * 23 + 7);
+                            uniform_int_distribution<int> dist(0, cand.size() - 1);
+                            int pattern_idx = cand[dist(rng)];
+
+                            for(int row = 0; row < NUM_LINE; row++){
+                                if(GB.BOARD_FIX_CELL[row][target_index] != 1){
+                                    IDV[idx_ls].BOARD[row][target_index] =
+                                        GB.FEASIBLE_COLUMN[target_index][pattern_idx][row];
+                                }
+                            }
+
+                            EvaluationFunction_LineCol(idx_ls);
+
+                            BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[idx_ls].EVALUATION_VALUE_F_1;
+                            BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[idx_ls].EVALUATION_VALUE_F_2;
+                            BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[idx_ls].EVALUATION_VALUE_LINE;
+                            BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[idx_ls].EVALUATION_VALUE_COLUMN;
+                            BT_IDV[simu][gene].BOARD = IDV[idx_ls].BOARD;
+                        }
+                    }
+                }
+            }
+
             // //終了判定
             // for(int i = 0; i < PARENTS_SIZE; i++){
             //     if(IDV[i].EVALUATION_VALUE_F_1 == 0 && IDV[i].EVALUATION_VALUE_F_2 == 0){
@@ -156,7 +340,6 @@ void Optimization::Algorithm()
                 FINISH_GENERATION = gene; // 最適解到達世代を保存
                 break;
             }
-            
         }
         IDV.clear();
     }
@@ -1019,8 +1202,34 @@ void Optimization::Mutation(int gene, int loop)
         EvaluationFunction_LineCol(PARENTS_SIZE * 3 + i);
     }
 }
- 
-//局所探索アルゴリズム：進化が止まった時の最良個体に対して実施
+
+
+// 局所探索アルゴリズム
+void Optimization::LocalSearch(int idx)
+{
+    int target_index = -1;
+    vector<pair<long, int>> line_eval;
+    for (int j = 0; j < NUM_LINE; j++)
+    {
+        line_eval.push_back({IDV[idx].EVALUATION_VALUE_LINE[j], j});
+    }
+    sort(line_eval.rbegin(), line_eval.rend());
+    target_index = line_eval.front().second;
+
+    mt19937 rng(BASE_SEED + idx * 13);
+    uniform_int_distribution<int> feasible_dist(0, GB.FEASIBLE_LINE[target_index].size() - 1);
+    int pattern_idx = feasible_dist(rng);
+
+    for (int col = 0; col < NUM_COL; col++)
+    {
+        if (GB.BOARD_FIX_CELL[target_index][col] != 1)
+        {
+            IDV[idx].BOARD[target_index][col] = GB.FEASIBLE_LINE[target_index][pattern_idx][col];
+        }
+    }
+
+    EvaluationFunction_LineCol(idx);
+}
 
 void Optimization::Adjust_blackcell(int i, int r1, int r2, int c1, int c2, int loop)
 {
@@ -1504,7 +1713,7 @@ void Optimization::Plot_result(int i, int simu, string filename)
 
     filesystem::create_directories(dir);
 
-    string name_latest = dir + filename + to_string(i) + "_"+ to_string(GENERATION_SIZE) + ".csv";
+    string name_latest = dir + filename + to_string(i) + "_" + to_string(GENERATION_SIZE) + ".csv";
     ofstream file_latest(name_latest);
 
     if (!(simu == 1 or simu % 50 == 0))
@@ -1529,24 +1738,24 @@ void Optimization::Plot_result(int i, int simu, string filename)
 
 void Optimization::BestScore_Result(int simu, int gene)
 {
-    string dir_simu ="results/score/pareto(" +
-                 to_string(FIXCELL_FLAG) + "_" +
-                 to_string(CROSSOVER_FLAG) + "_" +
-                 to_string(PARENTS_FLAG) + "_" +
-                 to_string(MUTATION_FLAG) + "_" +
-                 to_string(SELECTION_FLAG) + ") + " +
-                 to_string(MUTATION_RATE) + "/" +
-                 "simu_" + to_string(simu) + "/";
+    string dir_simu = "results/score/pareto(" +
+                      to_string(FIXCELL_FLAG) + "_" +
+                      to_string(CROSSOVER_FLAG) + "_" +
+                      to_string(PARENTS_FLAG) + "_" +
+                      to_string(MUTATION_FLAG) + "_" +
+                      to_string(SELECTION_FLAG) + ") + " +
+                      to_string(MUTATION_RATE) + "/" +
+                      "simu_" + to_string(simu) + "/";
 
     filesystem::create_directories(dir_simu);
 
     string dir_memo = "results/score/pareto(" +
-                 to_string(FIXCELL_FLAG) + "_" +
-                 to_string(CROSSOVER_FLAG) + "_" +
-                 to_string(PARENTS_FLAG) + "_" +
-                 to_string(MUTATION_FLAG) + "_" +
-                 to_string(SELECTION_FLAG) + ") + " +
-                 to_string(MUTATION_RATE) + "/" ;
+                      to_string(FIXCELL_FLAG) + "_" +
+                      to_string(CROSSOVER_FLAG) + "_" +
+                      to_string(PARENTS_FLAG) + "_" +
+                      to_string(MUTATION_FLAG) + "_" +
+                      to_string(SELECTION_FLAG) + ") + " +
+                      to_string(MUTATION_RATE) + "/";
 
     filesystem::create_directories(dir_memo);
 
@@ -1555,12 +1764,13 @@ void Optimization::BestScore_Result(int simu, int gene)
 
     file_writebest << gene << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_1 << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_2 << endl;
 
-    if (gene == GENERATION_SIZE - 1 ||  (BT_IDV[simu][gene].EVALUATION_VALUE_F_1 == 0 && BT_IDV[simu][gene].EVALUATION_VALUE_F_2 == 0)) {
-        string summary_file = dir_memo + "simu.csv" ;
+    if (gene == GENERATION_SIZE - 1 || (BT_IDV[simu][gene].EVALUATION_VALUE_F_1 == 0 && BT_IDV[simu][gene].EVALUATION_VALUE_F_2 == 0))
+    {
+        string summary_file = dir_memo + "simu.csv";
         ofstream file_write_summary(summary_file, ios::app);
         file_write_summary << gene << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_1 << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_2 << endl;
 
-        string board_name = dir_simu + "best_board"+ ".csv";
+        string board_name = dir_simu + "best_board" + ".csv";
         ofstream board_file(board_name);
 
         for (int i = 0; i < NUM_LINE; i++)

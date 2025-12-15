@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 #  ★ ここで対象フォルダを指定する ★
 #  出力ファイルもここに保存される
 # ---------------------------------------------------
-TARGET_DIR = "results/score_SPLAY/score/pareto(1_1_3_4_1) + 0.100000"
+TARGET_DIR = "results/score_GUN/score/pareto(1_1_3_4_1) + 0.300000"
 TARGET_FILE = "best_score.csv"
 
 

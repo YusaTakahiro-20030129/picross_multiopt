@@ -21,6 +21,7 @@ private:
 	void Initialization(int loop);	   // 初期化
 	void Crossover(int loop);		   // 交叉
 	void Mutation(int gene, int loop); // 突然変異
+	void LocalSearch(int idx); // 局所探索
 	int Selection_Elite(int gene);	   // 選択
 	int Selection_tonament(int gene);
 	int selection_roulette();

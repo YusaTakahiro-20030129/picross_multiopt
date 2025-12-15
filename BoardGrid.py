@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # ★ ここだけ書き換えて使う！
 #   simu_0 ～ simu_19 が入っている「scoreフォルダの下の実験フォルダ」
 # ------------------------------------------------------
-TARGET_DIR = "results/score_SPLAY/score/pareto(1_1_3_4_1) + 0.00000"
+TARGET_DIR = "results/score_GUN/score/pareto(1_1_3_4_1) + 0.300000"
 
 TARGET_FILE = "best_board.csv"
 
