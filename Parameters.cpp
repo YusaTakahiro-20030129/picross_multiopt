@@ -5,14 +5,20 @@ const double PROBABILITY_LOWER_LIMIT_LINE = 1.0; //確定マスとする確率
 const int SIMULATION_SIZE = 20; //シミュレーション回数
 const int GENERATION_SIZE = 150; //GAの世代数
 const int PARENTS_SIZE = 2000; //GAの親集団サイズ
-const int OFFSPRING_SIZE = PARENTS_SIZE * 3; //GAの子集団サイズ
+const int OFFSPRING_SIZE = PARENTS_SIZE * 2; //GAの子集団サイズ
 
-const double MUTATION_RATE = 0.3; //GAの突然変異確率（初期のGAにするならば1.0に設定）
+const double MUTATION_RATE = 0.1; //GAの突然変異確率（初期のGAにするならば1.0に設定）
 
 const int TOURNAMENT_SIZE = 2 * (PARENTS_SIZE + OFFSPRING_SIZE) / PARENTS_SIZE; //GAの選択のトーナメントサイズ
 
+
 int OPT_TIME = 0; //最適解到達回数
 int FINISH_GENERATION = 0; //終了世代数
+//GAの設計方針
+int GA_FLAG = 1; //0: 標準GA , 1: GA + 局所探索(MA)
+double LS_APPLY_RATE = 0.2; // offspring に対する LS 適用率
+int LS_STAGNATION_GENE = 5; //局所探索注入のための停滞検出許容世代数
+int LS_MAX_TRIAL = 20; //局所探索の最大試行回数
 
 //　初期集団の生成方法
 //0: ランダム生成, 1: 行の制約に従った特殊配置
@@ -36,13 +42,7 @@ const int TOURNAMENT_RATE  = 2;
 
 // 突然変異方法の設定
 // 0: 領域変異（完全ランダム）, 1: 領域変異（確定マス設定）, 2: 半数行変異・半数列変異(確定マス設定), 3: 全体変異(確定マス設定),4: 全体変異(完全ランダム)
-int MUTATION_FLAG = 4;
-
-//局所探索の設定
-//0: 局所探索を行わない, 1: 局所探索を行う, 2: 確率的局所探索, 3: 非改善トリガー局所探索
-int MEMETIC_FLAG = 4;
-const int MEMETIC_RATE = 0.2; //確率的局所探索の確率
-const int MEMETIC_GENE = 3; //非改善トリガー局所探索の非改善許容世代数
+int MUTATION_FLAG = 5;
 
 
 // 選択方法の設定

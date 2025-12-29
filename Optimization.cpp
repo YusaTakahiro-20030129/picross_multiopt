@@ -90,11 +90,11 @@ void Optimization::Algorithm()
     // 最適解到達回数カウンター
     OPT_TIME = 0;
 
-    // --- MEMETIC_FLAG==3 support variables ---
-    static int memetic_not_improved = 0;
-    static double prev_best_eval = numeric_limits<double>::max();
     for (int simu = 0; simu < SIMULATION_SIZE; simu++)
     { // GAによる最適化
+        // GA停滞検出（simuごとにリセット）
+        int ga_stagnation_count = 0;
+        double ga_prev_best_eval = numeric_limits<double>::max();
         for (int gene = 0; gene < GENERATION_SIZE; gene++)
         {
             if (gene == 0)
@@ -123,203 +123,77 @@ void Optimization::Algorithm()
                 BestIndividualNo = Selection_tonament(gene);
             }
 
-            BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[BestIndividualNo].EVALUATION_VALUE_F_1; // 最良解の保存
-            BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
-
-            cout << "simu : " << simu << " || " << "gene " << gene << ": PASS_OK" << endl;
-
-            BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[BestIndividualNo].EVALUATION_VALUE_COLUMN;
-            BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
-            BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
-
-            if (MEMETIC_FLAG == 1)
+            // Selection後の GA best を取得（停滞判定用）
+            int GA_BestNo = 0;
+            double GA_best_eval = numeric_limits<double>::max();
+            for (int i = 0; i < PARENTS_SIZE; i++)
             {
-                if (gene > 0 && gene % 5 == 0)
+                double f1 = IDV[i].EVALUATION_VALUE_F_1;
+                double f2 = IDV[i].EVALUATION_VALUE_F_2;
+                double val = f1 * f1 + f2 * f2;
+                if (val < GA_best_eval)
                 {
-                    LocalSearch(BestIndividualNo);
-                    BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[BestIndividualNo].EVALUATION_VALUE_F_1;
-                    BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
-                    BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
-                    BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[BestIndividualNo].EVALUATION_VALUE_COLUMN;
-                    BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
+                    GA_best_eval = val;
+                    GA_BestNo = i;
                 }
             }
-            // -------- MEMETIC_FLAG == 2: probabilistic local search --------
-            if (MEMETIC_FLAG == 2)
+
+            // 停滞カウント更新（GA best 基準）
+            if (GA_best_eval < ga_prev_best_eval)
             {
-                if (gene > 0)
-                {
-                    mt19937 rng(BASE_SEED + simu * 17 + gene * 31);
-                    uniform_real_distribution<double> dist_prob(0.0, 1.0);
-                    if (dist_prob(rng) < MEMETIC_RATE)
-                    {
-                        LocalSearch(BestIndividualNo);
-                        BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[BestIndividualNo].EVALUATION_VALUE_F_1;
-                        BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
-                        BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
-                        BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[BestIndividualNo].EVALUATION_VALUE_COLUMN;
-                        BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
-                    }
-                }
+                ga_prev_best_eval = GA_best_eval;
+                ga_stagnation_count = 0;
             }
-            // -------- MEMETIC_FLAG == 3: non-improvement-triggered local search --------
-            if (MEMETIC_FLAG == 3)
+            else
             {
-                double current_best_eval = IDV[BestIndividualNo].EVALUATION_VALUE_F_1 * IDV[BestIndividualNo].EVALUATION_VALUE_F_1 + IDV[BestIndividualNo].EVALUATION_VALUE_F_2 * IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
-
-                if (current_best_eval < prev_best_eval)
-                {
-                    memetic_not_improved = 0;
-                    prev_best_eval = current_best_eval;
-                }
-                else
-                {
-                    memetic_not_improved++;
-                }
-
-                if (memetic_not_improved >= MEMETIC_GENE)
-                {
-                    LocalSearch(BestIndividualNo);
-                    memetic_not_improved = 0;
-                    prev_best_eval = IDV[BestIndividualNo].EVALUATION_VALUE_F_1 * IDV[BestIndividualNo].EVALUATION_VALUE_F_1 + IDV[BestIndividualNo].EVALUATION_VALUE_F_2 * IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
-
-                    BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[BestIndividualNo].EVALUATION_VALUE_F_1;
-                    BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[BestIndividualNo].EVALUATION_VALUE_F_2;
-                    BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[BestIndividualNo].EVALUATION_VALUE_LINE;
-                    BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[BestIndividualNo].EVALUATION_VALUE_COLUMN;
-                    BT_IDV[simu][gene].BOARD = IDV[BestIndividualNo].BOARD;
-                }
+                ga_stagnation_count++;
             }
-            // -------- MEMETIC_FLAG == 4: LocalSearch with black-count matching for both rows/columns --------
-            if (MEMETIC_FLAG == 4) {
-                if (gene > 0) {
 
-                    int idx_ls = BestIndividualNo;
+            // 5世代連続停滞なら LS 注入（GA best 基準）
+            if (GA_FLAG == 1 && ga_stagnation_count >= LS_STAGNATION_GENE)
+            {
+                long before_f1 = IDV[GA_BestNo].EVALUATION_VALUE_F_1;
+                long before_f2 = IDV[GA_BestNo].EVALUATION_VALUE_F_2;
 
-                    // ----- choose row or column: pick the worse violation globally -----
-                    bool target_is_row = true;
-                    long worst_row_val = -1;
-                    long worst_col_val = -1;
-                    int target_index = -1;
+                LocalSearch(GA_BestNo); // ★ 01ビット反転LS（first-improvement）
 
-                    for (int j = 0; j < NUM_LINE; j++) {
-                        if (IDV[idx_ls].EVALUATION_VALUE_LINE[j] > worst_row_val) {
-                            worst_row_val = IDV[idx_ls].EVALUATION_VALUE_LINE[j];
-                        }
-                    }
-                    for (int j = 0; j < NUM_COL; j++) {
-                        if (IDV[idx_ls].EVALUATION_VALUE_COLUMN[j] > worst_col_val) {
-                            worst_col_val = IDV[idx_ls].EVALUATION_VALUE_COLUMN[j];
-                        }
-                    }
+                long after_f1 = IDV[GA_BestNo].EVALUATION_VALUE_F_1;
+                long after_f2 = IDV[GA_BestNo].EVALUATION_VALUE_F_2;
 
-                    // decide target direction
-                    if (worst_col_val > worst_row_val) {
-                        target_is_row = false;
-                    }
+                cout << "[LS injected] simu=" << simu << " gene=" << gene
+                     << " stagnation=" << ga_stagnation_count
+                     << " (" << before_f1 << "," << before_f2 << " -> "
+                     << after_f1 << "," << after_f2 << ")" << endl;
 
-                    if (target_is_row) {
-                        // -------- ROW MODE --------
-                        // pick worst row
-                        vector<pair<long,int>> line_eval;
-                        for(int j = 0; j < NUM_LINE; j++){
-                            line_eval.push_back({IDV[idx_ls].EVALUATION_VALUE_LINE[j], j});
-                        }
-                        sort(line_eval.rbegin(), line_eval.rend());
-                        target_index = line_eval.front().second;
+                // LSを入れたので停滞カウントをリセット（次の停滞検出のため）
+                ga_prev_best_eval = after_f1 * after_f1 + after_f2 * after_f2;
+                ga_stagnation_count = 0;
+            }
 
-                        // count black in current row
-                        int current_black = 0;
-                        for(int c = 0; c < NUM_COL; c++){
-                            if(IDV[idx_ls].BOARD[target_index][c] == 1) current_black++;
-                        }
-
-                        // find feasible rows with equal black count
-                        vector<int> cand;
-                        for(int p = 0; p < GB.FEASIBLE_LINE[target_index].size(); p++){
-                            int fblack = 0;
-                            for(int c = 0; c < NUM_COL; c++){
-                                if(GB.FEASIBLE_LINE[target_index][p][c] == 1) fblack++;
-                            }
-                            if(fblack == current_black) cand.push_back(p);
-                        }
-
-                        if(!cand.empty()){
-                            mt19937 rng(BASE_SEED + simu * 19 + gene * 23);
-                            uniform_int_distribution<int> dist(0, cand.size() - 1);
-                            int pattern_idx = cand[dist(rng)];
-
-                            for(int col = 0; col < NUM_COL; col++){
-                                if(GB.BOARD_FIX_CELL[target_index][col] != 1){
-                                    IDV[idx_ls].BOARD[target_index][col] =
-                                        GB.FEASIBLE_LINE[target_index][pattern_idx][col];
-                                }
-                            }
-                            EvaluationFunction_LineCol(idx_ls);
-
-                            BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[idx_ls].EVALUATION_VALUE_F_1;
-                            BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[idx_ls].EVALUATION_VALUE_F_2;
-                            BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[idx_ls].EVALUATION_VALUE_LINE;
-                            BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[idx_ls].EVALUATION_VALUE_COLUMN;
-                            BT_IDV[simu][gene].BOARD = IDV[idx_ls].BOARD;
-                        }
-                    }
-                    else {
-                        // -------- COLUMN MODE --------
-                        vector<pair<long,int>> col_eval;
-                        for(int j = 0; j < NUM_COL; j++){
-                            col_eval.push_back({IDV[idx_ls].EVALUATION_VALUE_COLUMN[j], j});
-                        }
-                        sort(col_eval.rbegin(), col_eval.rend());
-                        target_index = col_eval.front().second;
-
-                        // count black in current column
-                        int current_black = 0;
-                        for(int r = 0; r < NUM_LINE; r++){
-                            if(IDV[idx_ls].BOARD[r][target_index] == 1) current_black++;
-                        }
-
-                        // find feasible columns with equal black count
-                        vector<int> cand;
-                        for(int p = 0; p < GB.FEASIBLE_COLUMN[target_index].size(); p++){
-                            int fblack = 0;
-                            for(int r = 0; r < NUM_LINE; r++){
-                                if(GB.FEASIBLE_COLUMN[target_index][p][r] == 1) fblack++;
-                            }
-                            if(fblack == current_black) cand.push_back(p);
-                        }
-
-                        if(!cand.empty()){
-                            mt19937 rng(BASE_SEED + simu * 19 + gene * 23 + 7);
-                            uniform_int_distribution<int> dist(0, cand.size() - 1);
-                            int pattern_idx = cand[dist(rng)];
-
-                            for(int row = 0; row < NUM_LINE; row++){
-                                if(GB.BOARD_FIX_CELL[row][target_index] != 1){
-                                    IDV[idx_ls].BOARD[row][target_index] =
-                                        GB.FEASIBLE_COLUMN[target_index][pattern_idx][row];
-                                }
-                            }
-
-                            EvaluationFunction_LineCol(idx_ls);
-
-                            BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[idx_ls].EVALUATION_VALUE_F_1;
-                            BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[idx_ls].EVALUATION_VALUE_F_2;
-                            BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[idx_ls].EVALUATION_VALUE_LINE;
-                            BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[idx_ls].EVALUATION_VALUE_COLUMN;
-                            BT_IDV[simu][gene].BOARD = IDV[idx_ls].BOARD;
-                        }
-                    }
+            // 世代終了時点の最終 best を再取得して BT_IDV に保存
+            int FinalBestNo = 0;
+            double best_val = numeric_limits<double>::max();
+            for (int i = 0; i < PARENTS_SIZE; i++)
+            {
+                double f1 = IDV[i].EVALUATION_VALUE_F_1;
+                double f2 = IDV[i].EVALUATION_VALUE_F_2;
+                double val = f1 * f1 + f2 * f2;
+                if (val < best_val)
+                {
+                    best_val = val;
+                    FinalBestNo = i;
                 }
             }
 
-            // //終了判定
-            // for(int i = 0; i < PARENTS_SIZE; i++){
-            //     if(IDV[i].EVALUATION_VALUE_F_1 == 0 && IDV[i].EVALUATION_VALUE_F_2 == 0){
-            //         cout << "Optimization goal !!" << endl;
-            //         break;
-            //     }
-            // }
+            BT_IDV[simu][gene].EVALUATION_VALUE_F_1 = IDV[FinalBestNo].EVALUATION_VALUE_F_1;
+            BT_IDV[simu][gene].EVALUATION_VALUE_F_2 = IDV[FinalBestNo].EVALUATION_VALUE_F_2;
+            BT_IDV[simu][gene].EVALUATION_VALUE_COLUMN = IDV[FinalBestNo].EVALUATION_VALUE_COLUMN;
+            BT_IDV[simu][gene].EVALUATION_VALUE_LINE = IDV[FinalBestNo].EVALUATION_VALUE_LINE;
+            BT_IDV[simu][gene].BOARD = IDV[FinalBestNo].BOARD;
+
+            cout << "simu : " << simu << " || gene " << gene
+                 << ": best=(" << BT_IDV[simu][gene].EVALUATION_VALUE_F_1
+                 << "," << BT_IDV[simu][gene].EVALUATION_VALUE_F_2 << ")" << endl;
 
             Plot_result(simu, gene, "pareto_");
             BestScore_Result(simu, gene);
@@ -931,18 +805,19 @@ void Optimization::Mutation(int gene, int loop)
     mt19937 rng(BASE_SEED + loop * LOOP_OFFSET + OPERATION_OFFSET * 2 + gene * INDIVIDUAL_OFFSET);
     uniform_real_distribution<double> dist_prob(0.0, 1.0); // 変異率の設定
 
-    for (int i = 0; i < PARENTS_SIZE; i++)
+    // 交叉後 offspring にのみ突然変異を適用
+    for (int i = 0; i < OFFSPRING_SIZE; i++)
     {
+        int idx = PARENTS_SIZE + i; // ★ 突然変異対象（交叉個体）
+
         if (dist_prob(rng) > MUTATION_RATE)
         {
-            // 変異しない場合は親をそのままコピー
-            IDV[PARENTS_SIZE * 3 + i].BOARD = IDV[i].BOARD;
-            EvaluationFunction_LineCol(PARENTS_SIZE * 3 + i);
+            // 変異しない → 交叉結果をそのまま使う
+            EvaluationFunction_LineCol(idx);
             continue;
         }
 
-        // 盤面の複製
-        IDV[PARENTS_SIZE * 3 + i].BOARD = IDV[i].BOARD;
+        // 盤面はすでに Crossover() で作られているのでコピー不要
 
         uniform_int_distribution<int> dist_line(0, NUM_LINE - 1);
         uniform_int_distribution<int> dist_col(0, NUM_COL - 1);
@@ -966,12 +841,12 @@ void Optimization::Mutation(int gene, int loop)
             {
                 for (int col = c1; col <= c2; ++col)
                 {
-                    if (IDV[i].BOARD[row][col] == 1)
+                    if (IDV[idx].BOARD[row][col] == 1)
                     {
                         black_count++;
                     }
                     // 一旦すべて初期化（0）
-                    IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 0;
+                    IDV[idx].BOARD[row][col] = 0;
                 }
             }
             // 黒マス配置の範囲設定
@@ -983,9 +858,9 @@ void Optimization::Mutation(int gene, int loop)
                 int choice_line = black_line(rng);
                 int choice_col = black_col(rng);
 
-                if (IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] == 0)
+                if (IDV[idx].BOARD[choice_line][choice_col] == 0)
                 {
-                    IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] = 1;
+                    IDV[idx].BOARD[choice_line][choice_col] = 1;
                     black_count--;
                 }
             }
@@ -998,16 +873,16 @@ void Optimization::Mutation(int gene, int loop)
             {
                 for (int col = c1; col <= c2; ++col)
                 {
-                    if (IDV[i].BOARD[row][col] == 1)
+                    if (IDV[idx].BOARD[row][col] == 1)
                     {
                         black_count++;
                     }
                     // 一旦すべて初期化（0）
-                    IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 0;
+                    IDV[idx].BOARD[row][col] = 0;
                     // 確定マスはすでに定義
                     if (GB.BOARD_FIX_CELL[row][col] == 1)
                     {
-                        IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 1;
+                        IDV[idx].BOARD[row][col] = 1;
                         black_count--;
                     }
                 }
@@ -1022,107 +897,90 @@ void Optimization::Mutation(int gene, int loop)
                 int choice_line = black_line(rng);
                 int choice_col = black_col(rng);
 
-                if (IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] == 0 && GB.BOARD_FIX_CELL[choice_line][choice_col] != 1)
+                if (IDV[idx].BOARD[choice_line][choice_col] == 0 && GB.BOARD_FIX_CELL[choice_line][choice_col] != 1)
                 {
-                    IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] = 1;
+                    IDV[idx].BOARD[choice_line][choice_col] = 1;
                     black_count--;
-                }
-            }
-
-            if (MUTATION_FLAG == 2)
-            {
-                int mutation_pass = i % 2;
-                if (mutation_pass == 0)
-                {
-                    for (int row = r1; row <= r2; row++)
-                    {
-                        for (int col = 0; col <= NUM_COL; col++)
-                        {
-                            if (IDV[i].BOARD[row][col] == 1)
-                            {
-                                black_count++;
-                            }
-                            // 一旦すべて初期化（0）
-                            IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 0;
-                            // 確定マスはすでに定義
-                            if (GB.BOARD_FIX_CELL[row][col] == 1)
-                            {
-                                IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 1;
-                                black_count--;
-                            }
-                        }
-                    }
-                    // 黒マス配置の範囲設定
-                    uniform_int_distribution<int> black_line(r1, r2);
-                    uniform_int_distribution<int> black_col(0, NUM_COL);
-
-                    while (black_count > 0)
-                    {
-                        int choice_line = black_line(rng);
-                        int choice_col = black_col(rng);
-
-                        if (IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] == 0 && GB.BOARD_FIX_CELL[choice_line][choice_col] != 1)
-                        {
-                            IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] = 1;
-                            black_count--;
-                        }
-                    }
-                }
-                if (mutation_pass == 1)
-                {
-                    for (int col = c1; col <= c2; col++)
-                    {
-                        for (int row = 0; row <= NUM_LINE; row++)
-                        {
-                            if (IDV[i].BOARD[row][col] == 1)
-                            {
-                                black_count++;
-                            }
-                            // 一旦すべて初期化（0）
-                            IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 0;
-                            // 確定マスはすでに定義
-                            if (GB.BOARD_FIX_CELL[row][col] == 1)
-                            {
-                                IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 1;
-                                black_count--;
-                            }
-                        }
-                    }
-                    // 黒マス配置の範囲設定
-                    uniform_int_distribution<int> black_line(0, NUM_LINE);
-                    uniform_int_distribution<int> black_col(c1, c2);
-
-                    while (black_count > 0)
-                    {
-                        int choice_line = black_line(rng);
-                        int choice_col = black_col(rng);
-
-                        if (IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] == 0 && GB.BOARD_FIX_CELL[choice_line][choice_col] != 1)
-                        {
-                            IDV[PARENTS_SIZE * 3 + i].BOARD[choice_line][choice_col] = 1;
-                            black_count--;
-                        }
-                    }
                 }
             }
         }
 
-        // // 配置候補の収集
-        // vector<vector<int>> candidates;
-        // for (int row = r1; row <= r2; ++row) {
-        //     for (int col = c1; col <= c2; ++col) {
-        //         candidates.push_back({row, col});
-        //     }
-        // }
+        if (MUTATION_FLAG == 2)
+        {
+            int mutation_pass = i % 2;
+            if (mutation_pass == 0)
+            {
+                for (int row = r1; row <= r2; row++)
+                {
+                    for (int col = 0; col <= NUM_COL; col++)
+                    {
+                        if (IDV[idx].BOARD[row][col] == 1)
+                        {
+                            black_count++;
+                        }
+                        // 一旦すべて初期化（0）
+                        IDV[idx].BOARD[row][col] = 0;
+                        // 確定マスはすでに定義
+                        if (GB.BOARD_FIX_CELL[row][col] == 1)
+                        {
+                            IDV[idx].BOARD[row][col] = 1;
+                            black_count--;
+                        }
+                    }
+                }
+                // 黒マス配置の範囲設定
+                uniform_int_distribution<int> black_line(r1, r2);
+                uniform_int_distribution<int> black_col(0, NUM_COL);
 
-        // // 候補をシャッフルし、black_count個のマスを1にする
-        // shuffle(candidates.begin(), candidates.end(), rng);
-        // for (int j = 0; j < black_count; j++) {
-        //     int row = candidates[j][0];
-        //     int col = candidates[j][1];
+                while (black_count > 0)
+                {
+                    int choice_line = black_line(rng);
+                    int choice_col = black_col(rng);
 
-        //     IDV[PARENTS_SIZE * 3 + i].BOARD[row][col] = 1;
-        // }
+                    if (IDV[idx].BOARD[choice_line][choice_col] == 0 && GB.BOARD_FIX_CELL[choice_line][choice_col] != 1)
+                    {
+                        IDV[idx].BOARD[choice_line][choice_col] = 1;
+                        black_count--;
+                    }
+                }
+            }
+            if (mutation_pass == 1)
+            {
+                for (int col = c1; col <= c2; col++)
+                {
+                    for (int row = 0; row <= NUM_LINE; row++)
+                    {
+                        if (IDV[idx].BOARD[row][col] == 1)
+                        {
+                            black_count++;
+                        }
+                        // 一旦すべて初期化（0）
+                        IDV[idx].BOARD[row][col] = 0;
+                        // 確定マスはすでに定義
+                        if (GB.BOARD_FIX_CELL[row][col] == 1)
+                        {
+                            IDV[idx].BOARD[row][col] = 1;
+                            black_count--;
+                        }
+                    }
+                }
+                // 黒マス配置の範囲設定
+                uniform_int_distribution<int> black_line(0, NUM_LINE);
+                uniform_int_distribution<int> black_col(c1, c2);
+
+                while (black_count > 0)
+                {
+                    int choice_line = black_line(rng);
+                    int choice_col = black_col(rng);
+
+                    if (IDV[idx].BOARD[choice_line][choice_col] == 0 && GB.BOARD_FIX_CELL[choice_line][choice_col] != 1)
+                    {
+                        IDV[idx].BOARD[choice_line][choice_col] = 1;
+                        black_count--;
+                    }
+                }
+            }
+        }
 
         if (MUTATION_FLAG == 3)
         {
@@ -1137,7 +995,7 @@ void Optimization::Mutation(int gene, int loop)
             {
                 vector<pair<long, int>> line_eval;
                 for (int j = 0; j < NUM_LINE; j++)
-                    line_eval.push_back({IDV[i].EVALUATION_VALUE_LINE[j], j});
+                    line_eval.push_back({IDV[idx].EVALUATION_VALUE_LINE[j], j});
                 sort(line_eval.rbegin(), line_eval.rend());
                 target_index = line_eval.front().second;
             }
@@ -1145,7 +1003,7 @@ void Optimization::Mutation(int gene, int loop)
             {
                 vector<pair<long, int>> col_eval;
                 for (int j = 0; j < NUM_COL; j++)
-                    col_eval.push_back({IDV[i].EVALUATION_VALUE_COLUMN[j], j});
+                    col_eval.push_back({IDV[idx].EVALUATION_VALUE_COLUMN[j], j});
                 sort(col_eval.rbegin(), col_eval.rend());
                 target_index = col_eval.front().second;
             }
@@ -1157,7 +1015,7 @@ void Optimization::Mutation(int gene, int loop)
                 int pattern_idx = feasible_dist(rng);
 
                 // 行をそのまま置き換え
-                IDV[PARENTS_SIZE * 3 + i].BOARD[target_index] = GB.FEASIBLE_LINE[target_index][pattern_idx];
+                IDV[idx].BOARD[target_index] = GB.FEASIBLE_LINE[target_index][pattern_idx];
             }
             else
             {
@@ -1168,7 +1026,7 @@ void Optimization::Mutation(int gene, int loop)
                 for (int r = 0; r < NUM_LINE; r++)
                 {
                     if (GB.BOARD_FIX_CELL[r][target_index] != 1)
-                        IDV[PARENTS_SIZE * 3 + i].BOARD[r][target_index] = GB.FEASIBLE_COLUMN[target_index][pattern_idx][r];
+                        IDV[idx].BOARD[r][target_index] = GB.FEASIBLE_COLUMN[target_index][pattern_idx][r];
                 }
             }
         }
@@ -1179,7 +1037,7 @@ void Optimization::Mutation(int gene, int loop)
             int target_index = -1;
             vector<pair<long, int>> line_eval;
             for (int j = 0; j < NUM_LINE; j++)
-                line_eval.push_back({IDV[i].EVALUATION_VALUE_LINE[j], j});
+                line_eval.push_back({IDV[idx].EVALUATION_VALUE_LINE[j], j});
             sort(line_eval.rbegin(), line_eval.rend());
             target_index = line_eval.front().second;
 
@@ -1192,43 +1050,235 @@ void Optimization::Mutation(int gene, int loop)
             {
                 if (GB.BOARD_FIX_CELL[target_index][col] != 1)
                 {
-                    IDV[PARENTS_SIZE * 3 + i].BOARD[target_index][col] =
+                    IDV[idx].BOARD[target_index][col] =
                         GB.FEASIBLE_LINE[target_index][pattern_idx][col];
                 }
             }
         }
 
+        if (MUTATION_FLAG == 5)
+        {
+            // 評価値が最も悪い行 or 列を選択
+            bool use_line = true;
+            int target = -1;
+
+            long max_line = -1, max_col = -1;
+            int worst_line = -1, worst_col = -1;
+
+            for (int r = 0; r < NUM_LINE; r++)
+            {
+                if (IDV[idx].EVALUATION_VALUE_LINE[r] > max_line)
+                {
+                    max_line = IDV[idx].EVALUATION_VALUE_LINE[r];
+                    worst_line = r;
+                }
+            }
+
+            for (int c = 0; c < NUM_COL; c++)
+            {
+                if (IDV[idx].EVALUATION_VALUE_COLUMN[c] > max_col)
+                {
+                    max_col = IDV[idx].EVALUATION_VALUE_COLUMN[c];
+                    worst_col = c;
+                }
+            }
+
+            if (max_col > max_line)
+            {
+                use_line = false;
+                target = worst_col;
+            }
+            else
+            {
+                use_line = true;
+                target = worst_line;
+            }
+
+            // ペア反転を3回実施（黒マス数保存・確定マス除外）
+            const int SWAP_K = 3;
+
+            for (int rep = 0; rep < SWAP_K; rep++)
+            {
+                vector<pair<int, int>> ones;
+                vector<pair<int, int>> zeros;
+
+                if (use_line)
+                {
+                    int r = target;
+                    for (int c = 0; c < NUM_COL; c++)
+                    {
+                        if (GB.BOARD_FIX_CELL[r][c] != 0)
+                            continue;
+
+                        if (IDV[idx].BOARD[r][c] == 1)
+                            ones.emplace_back(r, c);
+                        else
+                            zeros.emplace_back(r, c);
+                    }
+                }
+                else
+                {
+                    int c = target;
+                    for (int r = 0; r < NUM_LINE; r++)
+                    {
+                        if (GB.BOARD_FIX_CELL[r][c] != 0)
+                            continue;
+
+                        if (IDV[idx].BOARD[r][c] == 1)
+                            ones.emplace_back(r, c);
+                        else
+                            zeros.emplace_back(r, c);
+                    }
+                }
+
+                if (ones.empty() || zeros.empty())
+                    break;
+
+                uniform_int_distribution<int> dist1(0, ones.size() - 1);
+                uniform_int_distribution<int> dist0(0, zeros.size() - 1);
+
+                auto [r1, c1] = ones[dist1(rng)];
+                auto [r2, c2] = zeros[dist0(rng)];
+
+                // 1↔0 ペア反転（黒マス数保存）
+                IDV[idx].BOARD[r1][c1] = 0;
+                IDV[idx].BOARD[r2][c2] = 1;
+            }
+        }
+
         // 評価関数の再計算
-        EvaluationFunction_LineCol(PARENTS_SIZE * 3 + i);
+        EvaluationFunction_LineCol(idx);
     }
 }
 
-
-// 局所探索アルゴリズム
+// 局所探索アルゴリズム（違反誘導型・2点反転・first improvement）
 void Optimization::LocalSearch(int idx)
 {
-    int target_index = -1;
-    vector<pair<long, int>> line_eval;
-    for (int j = 0; j < NUM_LINE; j++)
-    {
-        line_eval.push_back({IDV[idx].EVALUATION_VALUE_LINE[j], j});
-    }
-    sort(line_eval.rbegin(), line_eval.rend());
-    target_index = line_eval.front().second;
+    if (GA_FLAG != 1)
+        return;
 
-    mt19937 rng(BASE_SEED + idx * 13);
-    uniform_int_distribution<int> feasible_dist(0, GB.FEASIBLE_LINE[target_index].size() - 1);
-    int pattern_idx = feasible_dist(rng);
+    cout << "[LS start] idx=" << idx
+         << " f=(" << IDV[idx].EVALUATION_VALUE_F_1
+         << "," << IDV[idx].EVALUATION_VALUE_F_2 << ")" << endl;
 
-    for (int col = 0; col < NUM_COL; col++)
+    long best_f1 = IDV[idx].EVALUATION_VALUE_F_1;
+    long best_f2 = IDV[idx].EVALUATION_VALUE_F_2;
+    long best_val = best_f1 * best_f1 + best_f2 * best_f2;
+
+    mt19937 rng(BASE_SEED + idx * 131);
+
+    // 違反が最大の行 or 列を選択
+    bool use_line = true;
+    int target = -1;
+
+    long max_line = -1, max_col = -1;
+    int worst_line = -1, worst_col = -1;
+
+    for (int i = 0; i < NUM_LINE; i++)
     {
-        if (GB.BOARD_FIX_CELL[target_index][col] != 1)
+        if (IDV[idx].EVALUATION_VALUE_LINE[i] > max_line)
         {
-            IDV[idx].BOARD[target_index][col] = GB.FEASIBLE_LINE[target_index][pattern_idx][col];
+            max_line = IDV[idx].EVALUATION_VALUE_LINE[i];
+            worst_line = i;
         }
     }
 
-    EvaluationFunction_LineCol(idx);
+    for (int j = 0; j < NUM_COL; j++)
+    {
+        if (IDV[idx].EVALUATION_VALUE_COLUMN[j] > max_col)
+        {
+            max_col = IDV[idx].EVALUATION_VALUE_COLUMN[j];
+            worst_col = j;
+        }
+    }
+
+    if (max_col > max_line)
+    {
+        use_line = false;
+        target = worst_col;
+    }
+    else
+    {
+        use_line = true;
+        target = worst_line;
+    }
+
+    // 反転候補の収集
+    vector<pair<int, int>> ones;
+    vector<pair<int, int>> zeros;
+
+    if (use_line)
+    {
+        int r = target;
+        for (int c = 0; c < NUM_COL; c++)
+        {
+            if (GB.BOARD_FIX_CELL[r][c] == 1)
+                continue;
+
+            if (IDV[idx].BOARD[r][c] == 1)
+                ones.emplace_back(r, c);
+            else
+                zeros.emplace_back(r, c);
+        }
+    }
+    else
+    {
+        int c = target;
+        for (int r = 0; r < NUM_LINE; r++)
+        {
+            if (GB.BOARD_FIX_CELL[r][c] == 1)
+                continue;
+
+            if (IDV[idx].BOARD[r][c] == 1)
+                ones.emplace_back(r, c);
+            else
+                zeros.emplace_back(r, c);
+        }
+    }
+
+    if (ones.empty() || zeros.empty())
+    {
+        cout << "[LS skipped] no valid flip candidates" << endl;
+        return;
+    }
+
+    vector<vector<int>> backup = IDV[idx].BOARD;
+
+    uniform_int_distribution<int> dist1(0, ones.size() - 1);
+    uniform_int_distribution<int> dist0(0, zeros.size() - 1);
+
+    // 試行
+    for (int trial = 0; trial < LS_MAX_TRIAL; trial++)
+    {
+        auto [r1, c1] = ones[dist1(rng)];
+        auto [r2, c2] = zeros[dist0(rng)];
+
+        // 2点反転（黒数保存）
+        IDV[idx].BOARD[r1][c1] = 0;
+        IDV[idx].BOARD[r2][c2] = 1;
+
+        EvaluationFunction_LineCol(idx);
+
+        long f1 = IDV[idx].EVALUATION_VALUE_F_1;
+        long f2 = IDV[idx].EVALUATION_VALUE_F_2;
+        long val = f1 * f1 + f2 * f2;
+
+        if (val < best_val)
+        {
+            cout << "[LS improved] idx=" << idx
+                 << " (" << best_f1 << "," << best_f2
+                 << " -> " << f1 << "," << f2 << ")" << endl;
+            return;
+        }
+
+        // rollback
+        IDV[idx].BOARD = backup;
+        IDV[idx].EVALUATION_VALUE_F_1 = best_f1;
+        IDV[idx].EVALUATION_VALUE_F_2 = best_f2;
+    }
+
+    cout << "[LS no improvement] idx=" << idx
+         << " f=(" << best_f1 << "," << best_f2 << ")" << endl;
 }
 
 void Optimization::Adjust_blackcell(int i, int r1, int r2, int c1, int c2, int loop)

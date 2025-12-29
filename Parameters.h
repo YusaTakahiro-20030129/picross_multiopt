@@ -7,8 +7,8 @@ using namespace std;
 #define PARAMETERS_H_
 
 // 現在使用する問題の切り替え（ここを変えるだけ！）
-#define CURRENT_LINE_HINTS Hints_Line_gun
-#define CURRENT_COLUMN_HINTS Hints_Col_gun
+#define CURRENT_LINE_HINTS Hints_Line_SCOPION
+#define CURRENT_COLUMN_HINTS Hints_Col_SCOPION
 
 extern const double PROBABILITY_LOWER_LIMIT_LINE; // 確率的実行可能行の下限値
 extern int OPT_TIME;                              // 最適解到達回数
@@ -23,7 +23,7 @@ extern const double MUTATION_RATE;                // GAの突然変異確率
 extern const int TOURNAMENT_SIZE; // GAの選択のトーナメントサイズ
 extern const int TOURNAMENT_RATE; // 交叉のトーナメント選択の選択割合
 extern const int MEMETIC_GENE; // 非改善トリガー局所探索の非改善許容世代数
-extern const int MEMETIC_RATE; // 確率的局所探索の確率
+extern const double MEMETIC_RATE; // 確率的局所探索の確率
 
 // 実験時の分岐のためのフラグ設定（数値に応じてやりたい動作ができる）
 extern int INITIALIZATION_FLAG; // 初期集団の生成方法
@@ -33,6 +33,12 @@ extern int PARENTS_FLAG;   // 交叉時の親選択方法
 extern int MUTATION_FLAG;  // 突然変異方法の設定
 extern int MEMETIC_FLAG;   // 局所探索の設定
 extern int SELECTION_FLAG; // 次世代集団生成方法の設定
+
+extern int GA_FLAG;            // GAの設計方針
+extern double LS_APPLY_RATE;      //
+extern int LS_STAGNATION_GENE; // 局所探索注入のための
+extern double LS_STANGNATION_GENE;
+extern int LS_MAX_TRIAL;
 
 // 乱数の再現性の担保のためのシード値
 constexpr int BASE_SEED = 12345;
